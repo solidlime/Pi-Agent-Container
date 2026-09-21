@@ -1,0 +1,51 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  # GHCR names must be lowercase (the repo name is not).
+  IMAGE: ghcr.io/solidlime/pi-agent-container
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Plain `docker build`, not buildx: the default daemon keeps the image
+      # locally, so the smoke test below runs against what was just built
+      # instead of implicitly pulling it back from GHCR (propagation delay →
+      # flaky failure). The build is a couple of minutes, so no gha cache.
+      - name: build
+        run: |
+          set -e
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          SHORT="$(git rev-parse --short HEAD)"
+          docker build -t "$IMAGE:latest" -t "$IMAGE:sha-$SHORT" .
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            docker tag "$IMAGE:latest" "$IMAGE:${{ github.ref_name }}"
+          fi
+
+      # Cheap smoke test: the OS-level pieces must survive the build. The
+      # npm globals are installed on first boot, so they are not checked here
+      # (that path is verified by hand with a throwaway volume — see README).
+      - name: smoke test
+        run: |
+          docker run --rm --entrypoint sh "$IMAGE:latest" -c '
+            set -e
+            command -v git chezmoi rg zsh tmux vim fzf python3 make g++ sshd
+            sh -n /usr/local/bin/docker-entrypoint.sh
+            sh -n /usr/local/bin/update
+            ls -l /usr/local/bin/pi /usr/local/bin/pi-web
+            echo "smoke test OK"'
+
+      # Pushed only after the smoke test passes.
+      - name: push
+        run: docker push --all-tags "$IMAGE"

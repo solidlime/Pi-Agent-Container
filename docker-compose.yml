@@ -1,0 +1,27 @@
+services:
+  pi:
+    # Built by GitHub Actions (see .github/workflows/build.yml). Pull with
+    # `docker compose pull` to move to a new build.
+    image: ghcr.io/solidlime/pi-agent-container:latest
+    container_name: pi
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      # Token with read access to the dotfiles repo (private repo → required).
+      # Put GH_TOKEN=... in a .env file next to this compose file (gitignored).
+      # Leave it unset/empty to boot a stock container (no dotfiles sync).
+      GH_TOKEN: ${GH_TOKEN:-}
+      # Public key for `docker exec`-free SSH access (optional):
+      # SSH_AUTHORIZED_KEYS: ${SSH_AUTHORIZED_KEYS:-}
+      # Password for the pi-web UI when port 8787 is reachable beyond the host
+      # (optional, strongly recommended):
+      # PI_WEB_PASSWORD: ${PI_WEB_PASSWORD:-}
+    volumes:
+      # /root holds the npm globals (.npm-global), pi state and extensions
+      # (.pi), the chezmoi source (.local/share/chezmoi) and the workspace.
+      # One host directory → a recreated container keeps all of it.
+      - /volume1/docker/pi/root:/root
+    # Uncomment when the container has to reach the host by name:
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
