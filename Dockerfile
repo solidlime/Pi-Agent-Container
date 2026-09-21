@@ -25,6 +25,13 @@ ENV PATH=/root/.npm-global/bin:/root/.local/bin:$PATH
 # lines are pure log noise in a container)
 ENV NPM_CONFIG_FUND=false NPM_CONFIG_AUDIT=false NPM_CONFIG_UPDATE_NOTIFIER=false
 
+# pi extensions declare @earendil-works/pi-coding-agent as a peer dependency.
+# Without this, every npm that installs an extension (pi-web's plugin API
+# included) auto-installs the newest peer, nesting a second pi-coding-agent in
+# the extension tree that then shadows the running host. pi itself already
+# passes --legacy-peer-deps; this makes every npm in the image agree.
+ENV NPM_CONFIG_LEGACY_PEER_DEPS=true
+
 # pi-web's own entry point is not inside a pi-coding-agent package, so
 # pi-subagents cannot discover the host package from it and refuses to start
 # child sessions ("neither a supported standalone Pi host nor the installed npm
@@ -86,13 +93,6 @@ RUN apt-get update \
 # update script: one-shot upgrade of pi/pi-web + dotfiles, all persisted in /root
 COPY update.sh /usr/local/bin/update
 RUN chmod +x /usr/local/bin/update
-
-# unify script: npm cannot keep one pi-coding-agent here on its own — pi-web
-# pins the version exactly and some extensions peer-range into older ones, so a
-# second copy at a different version is guaranteed. This collapses them onto
-# one. Run by the entrypoint on every boot and by `update`; offline, idempotent.
-COPY unify-pi-install.sh /usr/local/bin/unify-pi-install
-RUN chmod +x /usr/local/bin/unify-pi-install
 
 # sshd gives non-interactive commands a minimal env (no Docker ENV PATH), so
 # expose the npm-global bins directly + via profile for login shells, and put the

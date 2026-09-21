@@ -6,8 +6,7 @@
 #   1b. /usr/bin/chromium link  — after chezmoi, which provides its target
 #   2. npm globals fallback     — only if step 1 did not produce them
 #   3. extension tree sync      — needs pi from step 1 or 2
-#   4. unify the pi install     — one pi-* copy, links point at it
-#   5. exec pi-web
+#   4. exec pi-web
 # Never start two npm processes at once: they write into the same
 # /root/.pi/agent/npm prefix and race, which floods the log with
 # "npm warn tar TAR_ENTRY_ERROR ENOENT" and node-gyp "spawn sh ENOENT"
@@ -67,14 +66,30 @@ ln -sf "$HOME/.local/bin/chromium" /usr/bin/chromium \
 #    heals a partial install. Deliberately sequential — see the header.
 #    No --ignore-scripts: this mirrors the dotfiles' install, which is the path
 #    that has actually been proven to produce a working pi.
-if ! command -v pi >/dev/null 2>&1; then
-    echo "==> installing pi (npm global, latest)..."
-    npm install -g --no-fund --no-audit @earendil-works/pi-coding-agent@latest
-fi
+#
+#    pi-web comes first: it pins its pi-coding-agent to an EXACT version, so the
+#    CLI is then installed at that same pin (read from pi-web's manifest), never
+#    @latest. Two @latest installs would disagree and npm would silently nest a
+#    second, older pi-coding-agent under pi-web; extensions resolve that copy
+#    while a different one is running, which breaks child sessions. Matching the
+#    pin makes npm reuse the one copy, so no nested duplicate is created.
 if ! command -v pi-web >/dev/null 2>&1; then
     echo "==> installing pi-web (npm global, latest)..."
     npm install -g --no-fund --no-audit @agegr/pi-web@latest
 fi
+if ! command -v pi >/dev/null 2>&1; then
+    NPMROOT=$(npm root -g)
+    PIN=$(node -e 'const fs=require("fs");const r=process.argv[1];process.stdout.write(JSON.parse(fs.readFileSync(r+"/@agegr/pi-web/package.json","utf8")).dependencies["@earendil-works/pi-coding-agent"])' "$NPMROOT")
+    echo "==> installing pi (npm global, pi-web pin $PIN)..."
+    npm install -g --no-fund --no-audit "@earendil-works/pi-coding-agent@$PIN"
+fi
+
+# Same stale-override heal as update.sh, before pi touches the tree below:
+# unify-pi-install (now removed) pinned @earendil-works/* in
+# ~/.pi/agent/npm/package.json, and a leftover pin makes the npm run by
+# `pi update --extensions` install a second, mismatched copy. Only
+# @earendil-works/* keys are dropped; idempotent and never fatal.
+node -e 'const f=process.env.HOME+"/.pi/agent/npm/package.json",fs=require("fs");try{const p=JSON.parse(fs.readFileSync(f,"utf8"));if(p.overrides){const keys=Object.keys(p.overrides).filter(k=>k.startsWith("@earendil-works/"));if(keys.length){keys.forEach(k=>delete p.overrides[k]);if(!Object.keys(p.overrides).length)delete p.overrides;fs.writeFileSync(f,JSON.stringify(p,null,2)+"\n");console.log("removed "+keys.length+" stale @earendil-works overrides")}}}catch(e){}' || true
 
 # 3. Extension packages: install/refresh them HERE, in ONE process, BEFORE
 #    pi-web starts. A single serialized run leaves the tree complete, so later
@@ -85,15 +100,6 @@ if [ -f "$HOME/.pi/agent/settings.json" ]; then
     # diagnosable without flooding `docker logs` when it succeeds.
     timeout 600 pi update --extensions --no-approve >>"$HOME/.pi/pi-update.log" 2>&1 \
         || echo "WARN: extension sync failed — see $HOME/.pi/pi-update.log (pi will retry at runtime, may race)"
-fi
-
-# 4. One pi-* copy, everything else linked to it. pi-web pins its pi-coding-agent
-#    to an exact version and some extensions peer-range into older ones, so the
-#    steps above always leave duplicates behind; a second copy at a different
-#    version in the extension tree is what breaks subagent spawning. Offline and
-#    idempotent (it prints only what it changed).
-if command -v unify-pi-install >/dev/null 2>&1; then
-    unify-pi-install || echo "WARN: unify-pi-install failed — duplicate pi installs may remain"
 fi
 
 exec "$@"

@@ -25,9 +25,25 @@ echo "==> npm globals: updating pi + pi-web + tools..."
 #
 # `npm update -g` stays inside the recorded semver range. pi is 0.x, where the
 # recorded range only allows patch updates, so a new minor (0.86 → 0.87) would
-# never arrive. Install the two that matter explicitly, then update the rest.
-npm install -g --no-fund --no-audit @earendil-works/pi-coding-agent@latest @agegr/pi-web@latest
+# never arrive. Install pi-web explicitly, then the CLI at the version pi-web
+# pins (read from its manifest) — never @latest. Two @latest installs would
+# disagree and npm would nest a second, older pi-coding-agent under pi-web;
+# extensions resolve that copy while a different one is running, which breaks
+# child sessions. `npm update -g` runs between the two so the CLI pin is applied
+# to pi-web's final manifest, not a soon-to-be-updated one.
+npm install -g --no-fund --no-audit @agegr/pi-web@latest
 npm update -g --no-fund --no-audit
+NPMROOT=$(npm root -g)
+PIN=$(node -e 'const fs=require("fs");const r=process.argv[1];process.stdout.write(JSON.parse(fs.readFileSync(r+"/@agegr/pi-web/package.json","utf8")).dependencies["@earendil-works/pi-coding-agent"])' "$NPMROOT")
+npm install -g --no-fund --no-audit "@earendil-works/pi-coding-agent@$PIN"
+
+# Drop the overrides unify-pi-install left in the extension-tree manifest. They
+# pin @earendil-works/* to the version unify last unified to; once the CLI has
+# moved to pi-web's pin they would make the next npm that touches the tree
+# install a second, mismatched copy — the duplicate that breaks child sessions.
+# Only the @earendil-works/* keys are removed (unrelated overrides survive).
+# Idempotent and never fatal: missing file / broken JSON / no keys are no-ops.
+node -e 'const f=process.env.HOME+"/.pi/agent/npm/package.json",fs=require("fs");try{const p=JSON.parse(fs.readFileSync(f,"utf8"));if(p.overrides){const keys=Object.keys(p.overrides).filter(k=>k.startsWith("@earendil-works/"));if(keys.length){keys.forEach(k=>delete p.overrides[k]);if(!Object.keys(p.overrides).length)delete p.overrides;fs.writeFileSync(f,JSON.stringify(p,null,2)+"\n");console.log("removed "+keys.length+" stale @earendil-works overrides")}}}catch(e){}' || true
 
 # Legacy UI (pi-web-ui) cleanup. It is only removed when it is NOT the running
 # PID1: unlinking a live Next.js process breaks it, so a container still started
@@ -59,13 +75,6 @@ if [ -d "$HOME/.local/share/chezmoi/.git" ]; then
     TMPDIR="$TMPDIR" chezmoi update --apply --force || echo "WARN: chezmoi update failed"
 else
     echo "    (no chezmoi source yet — will sync on next start with GH_TOKEN)"
-fi
-
-echo "==> pi install: unifying duplicate pi-* copies..."
-if command -v unify-pi-install >/dev/null 2>&1; then
-    unify-pi-install || echo "WARN: unify-pi-install failed"
-else
-    echo "    (old image: /usr/local/bin/unify-pi-install not present)"
 fi
 
 echo "==> versions:"
