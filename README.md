@@ -24,6 +24,28 @@ services:
 
 `docker compose up -d`, then open `http://<host>:8787`.
 
+`GH_TOKEN` is only needed on the **first boot**: once the dotfiles are cloned
+into `/root/.local/share/chezmoi`, the sync is skipped and the token is unused.
+
+If the host already has the `gh` CLI logged in, mount its config instead of
+putting a token anywhere — the entrypoint picks it up when `GH_TOKEN` is empty:
+
+```yaml
+    volumes:
+      - /path/to/pi/root:/root
+      - ~/.config/gh:/root/.config/gh:ro
+```
+
+(The Windows gh CLI keeps its config under `%APPDATA%\GitHub CLI` instead, so
+mount that path there. A host without gh just gets an empty directory — the
+entrypoint then boots stock, exactly like an unset `GH_TOKEN`.)
+
+Without a mount, the same thing from the shell:
+
+```sh
+GH_TOKEN="$(gh auth token)" docker compose up -d
+```
+
 `/root` is mounted **whole**, so npm globals (`/root/.npm-global`), pi state and
 extensions (`/root/.pi`), the chezmoi source (`/root/.local/share/chezmoi`) and
 the workspace (`/root/workspace`) all survive container recreation.
@@ -72,6 +94,9 @@ docker restart pi          # pick up new binaries
   by default, so `--hostname 0.0.0.0` is required in a container.
 - **Port 8787 exposes an agent that can run high-privilege commands.** Set
   `PI_WEB_PASSWORD` when it is reachable beyond the host.
+- **`GH_TOKEN` (env) wins over the gh CLI config.** The entrypoint reads
+  `~/.config/gh/hosts.yml` only when `GH_TOKEN` is empty, and takes the first
+  `oauth_token:` it finds — fine for one account, arbitrary with several.
 - **`GH_TOKEN` ends up in the volume in plaintext.** `chezmoi init` clones the
   dotfiles with the token embedded in the URL, so it is stored in
   `/root/.local/share/chezmoi/.git/config` — on the host mount, readable by

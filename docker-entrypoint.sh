@@ -30,6 +30,15 @@ fi
 # 1. dotfiles. This also installs the npm globals through the dotfiles'
 #    run_onchange_install-npm-globals.sh. GH_TOKEN is only needed for a private
 #    dotfiles repo — without it the container boots with a stock /root.
+#    GH_TOKEN normally comes from the environment; when it is empty, fall back to
+#    a gh CLI config mounted read-only (-v ~/.config/gh:/root/.config/gh:ro), so a
+#    host that is already `gh auth login`-ed needs no extra env var.
+if [ -z "$GH_TOKEN" ] && [ -f "$HOME/.config/gh/hosts.yml" ]; then
+    GH_TOKEN=$(sed -n 's/^[[:space:]]*oauth_token: *//p' "$HOME/.config/gh/hosts.yml" | head -1 | tr -d ' \r')
+    if [ -n "$GH_TOKEN" ]; then
+        echo "==> using the gh CLI token from $HOME/.config/gh/hosts.yml"
+    fi
+fi
 if [ -n "$GH_TOKEN" ] && ! [ -d "$HOME/.local/share/chezmoi/.git" ]; then
     echo "==> Syncing dotfiles via chezmoi..."
     export PATH="$HOME/.local/bin:$PATH"

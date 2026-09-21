@@ -10,7 +10,9 @@ services:
     environment:
       # Token with read access to the dotfiles repo (private repo → required).
       # Put GH_TOKEN=... in a .env file next to this compose file (gitignored).
-      # Leave it unset/empty to boot a stock container (no dotfiles sync).
+      # Leave it unset/empty to boot a stock container (no dotfiles sync) — or
+      # unset it *and* mount the host's gh CLI config (volumes below): the
+      # entrypoint then uses whatever `gh auth login` stored.
       GH_TOKEN: ${GH_TOKEN:-}
       # Public key for `docker exec`-free SSH access (optional):
       # SSH_AUTHORIZED_KEYS: ${SSH_AUTHORIZED_KEYS:-}
@@ -22,6 +24,11 @@ services:
       # (.pi), the chezmoi source (.local/share/chezmoi) and the workspace.
       # One host directory → a recreated container keeps all of it.
       - /volume1/docker/pi/root:/root
+      # Reuse the host's `gh auth login` instead of a token in .env (needs the gh
+      # CLI on the host; mounted read-only, only read when GH_TOKEN is empty).
+      # A host without gh just gets an empty directory here — the entrypoint
+      # falls back to a stock boot, same as an unset GH_TOKEN.
+      - ~/.config/gh:/root/.config/gh:ro
     # Uncomment when the container has to reach the host by name:
     # extra_hosts:
     #   - "host.docker.internal:host-gateway"
