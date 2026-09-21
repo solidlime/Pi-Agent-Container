@@ -6,7 +6,8 @@
 #   1b. /usr/bin/chromium link  — after chezmoi, which provides its target
 #   2. npm globals fallback     — only if step 1 did not produce them
 #   3. extension tree sync      — needs pi from step 1 or 2
-#   4. exec pi-web
+#   4. unify the pi install     — one pi-* copy, links point at it
+#   5. exec pi-web
 # Never start two npm processes at once: they write into the same
 # /root/.pi/agent/npm prefix and race, which floods the log with
 # "npm warn tar TAR_ENTRY_ERROR ENOENT" and node-gyp "spawn sh ENOENT"
@@ -67,12 +68,12 @@ ln -sf "$HOME/.local/bin/chromium" /usr/bin/chromium \
 #    No --ignore-scripts: this mirrors the dotfiles' install, which is the path
 #    that has actually been proven to produce a working pi.
 if ! command -v pi >/dev/null 2>&1; then
-    echo "==> installing pi (npm global)..."
-    npm install -g --no-fund --no-audit @earendil-works/pi-coding-agent
+    echo "==> installing pi (npm global, latest)..."
+    npm install -g --no-fund --no-audit @earendil-works/pi-coding-agent@latest
 fi
 if ! command -v pi-web >/dev/null 2>&1; then
-    echo "==> installing pi-web (npm global)..."
-    npm install -g --no-fund --no-audit @agegr/pi-web
+    echo "==> installing pi-web (npm global, latest)..."
+    npm install -g --no-fund --no-audit @agegr/pi-web@latest
 fi
 
 # 3. Extension packages: install/refresh them HERE, in ONE process, BEFORE
@@ -84,6 +85,15 @@ if [ -f "$HOME/.pi/agent/settings.json" ]; then
     # diagnosable without flooding `docker logs` when it succeeds.
     timeout 600 pi update --extensions --no-approve >>"$HOME/.pi/pi-update.log" 2>&1 \
         || echo "WARN: extension sync failed — see $HOME/.pi/pi-update.log (pi will retry at runtime, may race)"
+fi
+
+# 4. One pi-* copy, everything else linked to it. pi-web pins its pi-coding-agent
+#    to an exact version and some extensions peer-range into older ones, so the
+#    steps above always leave duplicates behind; a second copy at a different
+#    version in the extension tree is what breaks subagent spawning. Offline and
+#    idempotent (no output when there is nothing to do).
+if command -v unify-pi-install >/dev/null 2>&1; then
+    unify-pi-install || echo "WARN: unify-pi-install failed — duplicate pi installs may remain"
 fi
 
 exec "$@"

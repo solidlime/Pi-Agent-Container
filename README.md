@@ -60,6 +60,7 @@ the workspace (`/root/workspace`) all survive container recreation.
 | python3/make/g++ | agent-browser's Chromium download |
 | Chromium runtime libraries | everything the dotfiles' `run_*` scripts do |
 | pandoc + xelatex, Noto CJK fonts | pi's PDF export (pi-markdown-preview) |
+| the `unify-pi-install` repair script | — (keeps the pi install single-copy) |
 
 The two npm globals are ~1.4 GB and the dotfiles already install them
 (`run_onchange_install-npm-globals.sh`), so baking them downloaded everything
@@ -78,6 +79,11 @@ lmodern 32.5 MB, texlive-xetex 15.7 MB, texlive-fonts-recommended 14.7 MB).
 docker exec pi update      # npm globals + dotfiles (all persisted in /root)
 docker restart pi          # pick up new binaries
 ```
+
+`update` ends by running `unify-pi-install`, which is also run by the entrypoint
+on **every** boot: pi-web pins its pi-coding-agent to an exact version, so
+`npm i -g ...@latest` cannot avoid a second copy, and a second copy at a
+different version is what breaks subagent spawning.
 
 ## Notes for whoever edits this (learned the hard way)
 
@@ -111,9 +117,20 @@ docker restart pi          # pick up new binaries
   offers no font hook; the `$HOME/.local/bin/pandoc` wrapper (chezmoi) sits
   first on PATH and injects the Noto CJK fonts plus `\XeTeXlinebreaklocale
   "ja"` (via `~/.local/share/pandoc-cjk/jp-header.tex`).
+- **npm will never keep one pi-coding-agent in this container on its own.**
+  pi-web pins its dependency to an exact version (`0.9.1` → `0.85.1`), and
+  extensions peer-range into others (`pi-goal-x`: `>=0.83.0 <0.85.0`), so npm
+  silently installs a *second* copy at a different version — pi-goal-x alone
+  pulled in `pi-coding-agent@0.84.4` this way. Extension code then resolves the
+  host package from that copy, and only one of the two is the running one, so
+  subagent spawns fail (`neither a supported standalone Pi host nor the
+  installed npm package is available`). `unify-pi-install` (run on every boot
+  and by `update`) pins the scope through the extension tree's `overrides`,
+  replaces every nested copy with a symlink to the single global one, drops the
+  pre-rename `@mariozechner/pi-*` leftovers and reports the copy count. It is
+  offline and idempotent — run `docker exec pi unify-pi-install` to check.
 - **`~/.pi/agent/npm/node_modules/@earendil-works/pi-coding-agent` can dangle
-  after a pi-web update.** pi-web bundles a nested pi-coding-agent and npm hoists
-  it; when the link breaks, point it back at
+  after a pi-web update.** Same root cause; `unify-pi-install` re-points it at
   `/root/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent`.
 
 ## CI

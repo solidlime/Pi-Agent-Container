@@ -61,6 +61,13 @@ else
     echo "    (no chezmoi source yet — will sync on next start with GH_TOKEN)"
 fi
 
+echo "==> pi install: unifying duplicate pi-* copies..."
+if command -v unify-pi-install >/dev/null 2>&1; then
+    unify-pi-install || echo "WARN: unify-pi-install failed"
+else
+    echo "    (old image: /usr/local/bin/unify-pi-install not present)"
+fi
+
 echo "==> versions:"
 pi --version || echo "WARN: pi not runnable"
 # pi-web has no --version flag (unknown options exit 1), so read npm instead.

@@ -25,6 +25,17 @@ ENV PATH=/root/.npm-global/bin:/root/.local/bin:$PATH
 # lines are pure log noise in a container)
 ENV NPM_CONFIG_FUND=false NPM_CONFIG_AUDIT=false NPM_CONFIG_UPDATE_NOTIFIER=false
 
+# pi-web's own entry point is not inside a pi-coding-agent package, so
+# pi-subagents cannot discover the host package from it and refuses to start
+# child sessions ("neither a supported standalone Pi host nor the installed npm
+# package is available"). Its resolver checks this override first:
+#   pi-subagents/src/runs/background/async-execution.js
+#     return resolvePiPackageRoot() || env[PI_CODING_AGENT_PACKAGE_ROOT_ENV] || ...
+# and its own comment there says the override must be honoured. Pointing it at
+# the single global copy keeps background AND foreground subagents alive;
+# `docker exec` sessions inherit the value from the image.
+ENV PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT=/root/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent
+
 # Base tools + chezmoi (dotfiles sync inside the container) + sshd.
 # zsh/tmux/vim/fzf are baked on purpose: the dotfiles' run_once_install-shell.sh
 # and run_once_install-vim.sh would otherwise apt-get them on first boot, and
@@ -67,6 +78,13 @@ RUN apt-get update \
 # update script: one-shot upgrade of pi/pi-web + dotfiles, all persisted in /root
 COPY update.sh /usr/local/bin/update
 RUN chmod +x /usr/local/bin/update
+
+# unify script: npm cannot keep one pi-coding-agent here on its own — pi-web
+# pins the version exactly and some extensions peer-range into older ones, so a
+# second copy at a different version is guaranteed. This collapses them onto
+# one. Run by the entrypoint on every boot and by `update`; offline, idempotent.
+COPY unify-pi-install.sh /usr/local/bin/unify-pi-install
+RUN chmod +x /usr/local/bin/unify-pi-install
 
 # sshd gives non-interactive commands a minimal env (no Docker ENV PATH), so
 # expose the npm-global bins directly + via profile for login shells.

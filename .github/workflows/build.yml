@@ -19,6 +19,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Host-side: unify-pi-install.sh is what keeps the container at one
+      # pi-coding-agent, so its logic is exercised here without docker or npm
+      # (pure fixture tree, no network).
+      - name: test unify-pi-install.sh
+        run: sh tests/unify-pi-install-test.sh
+
       # Plain `docker build`, not buildx: the default daemon keeps the image
       # locally, so the smoke test below runs against what was just built
       # instead of implicitly pulling it back from GHCR (propagation delay →
@@ -47,10 +53,15 @@ jobs:
         run: |
           docker run --rm --entrypoint sh "$IMAGE:latest" -c '
             set -e
-            command -v git chezmoi rg zsh tmux vim fzf python3 make g++ sshd pandoc xelatex
+            command -v git chezmoi rg zsh tmux vim fzf python3 make g++ sshd pandoc xelatex unify-pi-install
             test -e /usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc
             sh -n /usr/local/bin/docker-entrypoint.sh
             sh -n /usr/local/bin/update
+            sh -n /usr/local/bin/unify-pi-install
+            test -x /usr/local/bin/unify-pi-install
+            # subagents refuse to spawn without this (pi-web's entry point is not
+            # inside a pi-coding-agent package), so the ENV must survive the build
+            test "$PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT" = "/root/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent"
             ls -l /usr/local/bin/pi /usr/local/bin/pi-web
             printf "| a | b |\n|---|---|\n| 1 | 2 |\n\n日本語のグリフ確認\n" > /tmp/smoke.md
             pandoc /tmp/smoke.md -o /tmp/smoke.pdf --pdf-engine=xelatex \
