@@ -51,33 +51,37 @@ jobs:
       # part a slimmer apt line would silently break.
       - name: smoke test
         run: |
+          # Which image is actually under test (the tag could be stale/local).
+          docker image inspect "$IMAGE:latest" --format 'image {{.Id}} created {{.Created}}'
           docker run --rm --entrypoint sh "$IMAGE:latest" -c '
             set -e
-            # dash's `command -v` only checks the FIRST name when given several
-            # (rc=0, one line printed) — so loop, and print each result.
+            fail=0
+            bad() { echo "FAIL: $*"; fail=1; }
+            echo "[0] environment"
+            echo "  PATH=$PATH"
+            ls -ld /usr/local/bin/chezmoi || echo "  /usr/local/bin/chezmoi ABSENT"
             echo "[1] tools"
             for t in git chezmoi rg zsh tmux vim fzf python3 make g++ sshd pandoc xelatex unify-pi-install; do
-              printf "  %-16s %s\n" "$t" "$(command -v "$t" || echo MISSING)"
-              command -v "$t" >/dev/null
+              p="$(command -v "$t" || true)"
+              if [ -n "$p" ]; then printf "  %-16s %s\n" "$t" "$p"; else printf "  %-16s MISSING\n" "$t"; fail=1; fi
             done
             echo "[2] CJK fonts"
-            test -e /usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc
-            echo "[3] scripts parse"
-            for f in docker-entrypoint.sh update unify-pi-install; do sh -n "/usr/local/bin/$f"; done
-            test -x /usr/local/bin/unify-pi-install
+            test -e /usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc || bad "no Noto CJK font file"
+            echo "[3] scripts"
+            for f in docker-entrypoint.sh update unify-pi-install; do sh -n "/usr/local/bin/$f" || bad "$f does not parse"; done
+            test -x /usr/local/bin/unify-pi-install || bad "unify-pi-install not executable"
             echo "[4] subagent host-package override"
             echo "  PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT=${PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT:-<UNSET>}"
-            test "$PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT" = "/root/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent"
-            echo "[5] pi/pi-web launchers"
-            ls -l /usr/local/bin/pi /usr/local/bin/pi-web
+            test "$PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT" = "/root/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent" || bad "host-package override missing"
+            echo "[5] launchers"
+            ls -l /usr/local/bin/pi /usr/local/bin/pi-web || bad "pi/pi-web symlinks missing"
             echo "[6] CJK pdf render"
             printf "| a | b |\n|---|---|\n| 1 | 2 |\n\n日本語のグリフ確認\n" > /tmp/smoke.md
             pandoc /tmp/smoke.md -o /tmp/smoke.pdf --pdf-engine=xelatex \
-              -V mainfont="Noto Serif CJK JP" -V monofont="Noto Sans Mono CJK JP" 2>/tmp/smoke.log
-            test -s /tmp/smoke.pdf
-            if grep -q "Missing character" /tmp/smoke.log; then
-              echo "FAIL: pandoc rendered but dropped glyphs"; cat /tmp/smoke.log; exit 1
-            fi
+              -V mainfont="Noto Serif CJK JP" -V monofont="Noto Sans Mono CJK JP" 2>/tmp/smoke.log || bad "pandoc failed"
+            test -s /tmp/smoke.pdf || bad "no pdf produced"
+            if grep -q "Missing character" /tmp/smoke.log; then bad "pandoc dropped CJK glyphs"; cat /tmp/smoke.log; fi
+            [ "$fail" = 0 ] || { echo "SMOKE TEST FAILED"; exit 1; }
             echo "smoke test OK"'
 
       # Pushed only after the smoke test passes.
