@@ -120,7 +120,10 @@ docker restart pi          # pick up new binaries
 
 Push to `main` → GitHub Actions builds and pushes
 `ghcr.io/solidlime/pi-agent-container:{latest, sha-<short>, <tag>}` (plus a smoke
-test that the OS-level pieces survived the build). On the host:
+test that the OS-level pieces survived the build, including a real
+pandoc → xelatex render of a table and a Japanese line — it greps the log for
+`Missing character`, because pandoc exits 0 even when it drops every CJK glyph).
+On the host:
 
 ```sh
 docker compose pull && docker compose up -d
