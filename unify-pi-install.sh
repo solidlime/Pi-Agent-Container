@@ -1,5 +1,5 @@
 #!/bin/sh
-# unify-pi-install — keep exactly ONE @earendil-works/pi-coding-agent in the container.
+# unify-pi-install — keep exactly ONE @earendil-works/pi-coding-agent per machine.
 #
 # WHY: @agegr/pi-web pins its pi dependency to an EXACT version (0.9.1 -> 0.85.1),
 # so `npm i -g pi-coding-agent@latest pi-web@latest` always leaves pi-web with a
@@ -20,15 +20,36 @@
 #   4. drop the legacy @mariozechner/pi-* copies (pre-rename leftovers)
 #   5. report the invariant (physical copy count)
 #
-# Off-container testing: PI_PREFIX / PI_EXT_TREE override the two roots.
+# Deliberate consequence: pi-web then runs against the newest pi-coding-agent
+# instead of the version it pinned — one physical copy is the whole point.
+#
+# This file ships, byte-for-byte, through two carriers. Keep them identical
+# (`cmp` them after editing either one):
+#   container  : Pi-Agent-Container/unify-pi-install.sh
+#                baked to /usr/local/bin/unify-pi-install, run by docker-entrypoint.sh
+#   other hosts: dotfiles/dot_local/bin/executable_unify-pi-install
+#                run by scripts/run_onchange_install-npm-globals.sh.tmpl
+#
+# Testing: PI_PREFIX / PI_EXT_TREE override the two roots (tests/unify-pi-install-test.sh).
 
 set -eu
 
+SCOPE="@earendil-works"
 PREFIX=${PI_PREFIX:-${NPM_CONFIG_PREFIX:-$HOME/.npm-global}}
 GLOBAL_NM="$PREFIX/lib/node_modules"
+
+# npm's global prefix is not always ~/.npm-global (homebrew, Entware /opt,
+# Debian /usr): ask npm when the assumed root has no pi scope at all.
+if [ ! -d "$GLOBAL_NM/$SCOPE" ] && [ -z "${PI_PREFIX:-}" ] && command -v npm >/dev/null 2>&1; then
+    probed=$(npm root -g 2>/dev/null || true)
+    if [ -n "$probed" ] && [ -d "$probed/$SCOPE" ]; then
+        GLOBAL_NM="$probed"
+        PREFIX=${probed%/lib/node_modules}
+    fi
+fi
+
 EXT_TREE=${PI_EXT_TREE:-$HOME/.pi/agent/npm}
 EXT_NM="$EXT_TREE/node_modules"
-SCOPE="@earendil-works"
 HOST="$GLOBAL_NM/$SCOPE/pi-coding-agent"
 
 if [ ! -f "$HOST/package.json" ]; then
@@ -54,7 +75,9 @@ relink_scope() {
     for p in "$dir"/*; do
         # [ -e ] follows the link, so a DANGLING symlink fails it — the state
         # this script exists to repair (a pi-web update left the link orphaned).
-        # Keep it in scope: [ -L ] is handled below.        [ -e "$p" ] || [ -L "$p" ] || continue
+        # A dangling symlink is exactly what this script repairs, so it stays
+        # in scope: [ -e ] follows the link and fails on a dangling one, while
+        # the [ -L ] branch below catches it.
         name=$(basename "$p")
         # pi-coding-agent sits next to the scope dir; the satellites are nested
         # inside it — link to whichever copy exists, newest wins.
