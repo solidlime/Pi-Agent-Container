@@ -37,23 +37,24 @@ if [ ! -f "$HOST/package.json" ]; then
 fi
 HOST_VERSION=$(node -p "require('$HOST/package.json').version")
 
-# Package names in the global scope — drives both the symlinking and the
-# overrides list, so a new @earendil-works/* dependency needs no edit. The
-# satellites (pi-ai, pi-tui, pi-agent-core, pi-telemetry, chord) live inside
-# pi-coding-agent's own node_modules, not next to it, so union both scopes.
+# Package names in the global scope — drives the `overrides` list, so a new
+# @earendil-works/* dependency needs no edit (the symlinking iterates the
+# directory instead). The satellites (pi-ai, pi-tui, pi-agent-core,
+# pi-telemetry, chord) live inside pi-coding-agent's own node_modules, not
+# next to it, so union both scopes.
 PKG_NAMES=$(
     { ls -1 "$GLOBAL_NM/$SCOPE" 2>/dev/null; ls -1 "$HOST/node_modules/$SCOPE" 2>/dev/null; } \
         | grep -v '^\.' | sort -u | tr '\n' ' '
 )
-
-changed=0
 
 relink_scope() {
     # $1 = a node_modules dir whose @earendil-works/* should point at the globals
     dir="$1/$SCOPE"
     [ -d "$dir" ] || return 0
     for p in "$dir"/*; do
-        [ -e "$p" ] || continue
+        # [ -e ] follows the link, so a DANGLING symlink fails it — the state
+        # this script exists to repair (a pi-web update left the link orphaned).
+        # Keep it in scope: [ -L ] is handled below.        [ -e "$p" ] || [ -L "$p" ] || continue
         name=$(basename "$p")
         # pi-coding-agent sits next to the scope dir; the satellites are nested
         # inside it — link to whichever copy exists, newest wins.
@@ -63,12 +64,11 @@ relink_scope() {
             continue # not present globally (yet) — leave the tree alone
         fi
         if [ -L "$p" ]; then
-            [ "$(readlink "$p")" = "$target" ] || { rm -f "$p"; ln -s "$target" "$p"; changed=1; }
+            [ "$(readlink "$p")" = "$target" ] || { rm -f "$p"; ln -s "$target" "$p"; }
             continue
         fi
         rm -rf "$p"
         ln -s "$target" "$p"
-        changed=1
         echo "unify: $p -> $target"
     done
 }
@@ -87,8 +87,11 @@ let pkg;
 try { pkg = JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) { console.log("unify: manifest unreadable (" + e.message + ")"); process.exit(0); }
 const want = {};
 for (const n of list) want["@earendil-works/" + n] = version;
-if (JSON.stringify(pkg.overrides || {}) !== JSON.stringify(want)) {
-  pkg.overrides = want;
+// Merge, never replace: this file belongs to pi and may carry unrelated
+// overrides (a wholesale assignment silently drops them).
+const merged = Object.assign({}, pkg.overrides || {}, want);
+if (JSON.stringify(pkg.overrides || {}) !== JSON.stringify(merged)) {
+  pkg.overrides = merged;
   fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
   console.log("unify: overrides pinned to " + version + " in " + file);
 }
@@ -100,23 +103,24 @@ RELINK="$EXT_NM/$SCOPE/pi-coding-agent"
 if [ -d "$EXT_NM/$SCOPE" ] && [ ! -L "$RELINK" ]; then
     rm -rf "$RELINK"
     ln -s "$HOST" "$RELINK"
-    changed=1
     echo "unify: extension tree pi-coding-agent -> $HOST"
 fi
 relink_scope "$EXT_NM"
 
-# 4. legacy pre-rename copies (only when nothing in the tree references them)
+# 4. legacy pre-rename copies (per package: the guard must match what is deleted)
 if [ -d "$EXT_NM/@mariozechner" ]; then
-    # A dependency KEY ("...":) — not the legacy package's own "name" field.
-    if grep -rql '"@mariozechner/pi-coding-agent"[[:space:]]*:' "$EXT_NM" \
-            --include=package.json --exclude-dir='@mariozechner' 2>/dev/null; then
-        echo "unify: legacy @mariozechner/pi-* left in place (still referenced)"
-    else
-        for p in pi-coding-agent pi-ai pi-tui pi-agent-core; do
-            [ -e "$EXT_NM/@mariozechner/$p" ] && rm -rf "$EXT_NM/@mariozechner/$p" && echo "unify: removed legacy @mariozechner/$p"
-        done
-        rmdir "$EXT_NM/@mariozechner" 2>/dev/null || true
-    fi
+    for p in pi-coding-agent pi-ai pi-tui pi-agent-core; do
+        [ -e "$EXT_NM/@mariozechner/$p" ] || continue
+        # A dependency KEY ("...":) — not the legacy package's own "name" field.
+        # One grep per package: an extension may peer-depend on any of the four.
+        if grep -rql "\"@mariozechner/$p\"[[:space:]]*:" "$EXT_NM" \
+                --include=package.json --exclude-dir='@mariozechner' 2>/dev/null; then
+            echo "unify: legacy @mariozechner/$p left in place (still referenced)"
+        else
+            rm -rf "$EXT_NM/@mariozechner/$p" && echo "unify: removed legacy @mariozechner/$p"
+        fi
+    done
+    rmdir "$EXT_NM/@mariozechner" 2>/dev/null || true
 fi
 
 # 5. invariant report — only the current package name counts: the legacy

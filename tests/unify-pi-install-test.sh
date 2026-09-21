@@ -19,17 +19,26 @@ printf '{"name":"@earendil-works/pi-tui","version":"9.9.9"}\n' > "$G/@earendil-w
 mkdir -p "$G/@agegr/pi-web/node_modules/@earendil-works/pi-coding-agent"
 printf '{"name":"@agegr/pi-web","version":"0.9.1"}\n' > "$G/@agegr/pi-web/package.json"
 printf '{"name":"@earendil-works/pi-coding-agent","version":"0.1.0"}\n' > "$G/@agegr/pi-web/node_modules/@earendil-works/pi-coding-agent/package.json"
+# a satellite link left orphaned by the same kind of update
+ln -s "$TMP/orphaned/pi-tui" "$G/@agegr/pi-web/node_modules/@earendil-works/pi-tui"
 
-# scratch extension tree with a stray duplicate + a legacy copy
+# scratch extension tree: a DANGLING link where the host package belongs (what a
+# pi-web update leaves behind), legacy copies, and an unrelated override that
+# must survive the manifest rewrite.
 E="$TMP/pi-agent/npm"
-mkdir -p "$E/node_modules/@earendil-works/pi-coding-agent" "$E/node_modules/@mariozechner/pi-coding-agent"
-printf '{"name":"pi-extensions","dependencies":{"pi-goal-x":"1.0.0"}}\n' > "$E/package.json"
-printf '{"name":"@earendil-works/pi-coding-agent","version":"0.2.0"}\n' > "$E/node_modules/@earendil-works/pi-coding-agent/package.json"
+mkdir -p "$E/node_modules/@earendil-works" "$E/node_modules/@mariozechner/pi-coding-agent"
+printf '{"name":"pi-extensions","dependencies":{"pi-goal-x":"1.0.0"},"overrides":{"unrelated-pkg":"1.2.3"}}\n' > "$E/package.json"
+ln -s "$TMP/orphaned/pi-coding-agent" "$E/node_modules/@earendil-works/pi-coding-agent"
 printf '{"name":"@mariozechner/pi-coding-agent","version":"0.73.1"}\n' > "$E/node_modules/@mariozechner/pi-coding-agent/package.json"
-# an extension that peer-depends on the legacy (pre-rename) package
+# extensions that peer-depend on the legacy (pre-rename) packages: one on the
+# host package, one on a satellite — the guard must cover both.
 mkdir -p "$E/node_modules/pi-rtk-optimizer"
 printf '{"name":"pi-rtk-optimizer","peerDependencies":{"@mariozechner/pi-coding-agent":"^0.74.0"}}\n' > "$E/node_modules/pi-rtk-optimizer/package.json"
+mkdir -p "$E/node_modules/@mariozechner/pi-ai" "$E/node_modules/pi-legacy-ai-user"
+printf '{"name":"@mariozechner/pi-ai","version":"0.73.1"}\n' > "$E/node_modules/@mariozechner/pi-ai/package.json"
+printf '{"name":"pi-legacy-ai-user","peerDependencies":{"@mariozechner/pi-ai":"^0.73.0"}}\n' > "$E/node_modules/pi-legacy-ai-user/package.json"
 
+dangling=$(readlink "$E/node_modules/@earendil-works/pi-coding-agent")
 out=$(PI_PREFIX="$TMP/npm-global" PI_EXT_TREE="$E" sh "$REPO/unify-pi-install.sh")
 echo "$out"
 
@@ -39,6 +48,15 @@ check() { # check <description> <expected> <actual>
     else printf 'FAIL %s (expected %s, got %s)\n' "$1" "$2" "$3"; fail=1; fi
 }
 
+check "fixture really started dangling" "$TMP/orphaned/pi-coding-agent" "$dangling"
+check "dangling extension link re-pointed" "$G/@earendil-works/pi-coding-agent" \
+    "$(readlink "$E/node_modules/@earendil-works/pi-coding-agent")"
+check "dangling satellite link re-pointed" "$G/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-tui" \
+    "$(readlink "$G/@agegr/pi-web/node_modules/@earendil-works/pi-tui")"
+check "unrelated override preserved" "1.2.3" \
+    "$(node -p "require('$E/package.json').overrides['unrelated-pkg']")"
+check "legacy satellite kept (peer-depended)" "1" \
+    "$(find "$E" -path '*/@mariozechner/pi-ai' -type d | wc -l | tr -d ' ')"
 check "nested pi-web copy is now a symlink" "$G/@earendil-works/pi-coding-agent" \
     "$(readlink "$G/@agegr/pi-web/node_modules/@earendil-works/pi-coding-agent")"
 check "extension tree copy is now a symlink" "$G/@earendil-works/pi-coding-agent" \

@@ -91,7 +91,7 @@ fi
 #    to an exact version and some extensions peer-range into older ones, so the
 #    steps above always leave duplicates behind; a second copy at a different
 #    version in the extension tree is what breaks subagent spawning. Offline and
-#    idempotent (no output when there is nothing to do).
+#    idempotent (it prints only what it changed).
 if command -v unify-pi-install >/dev/null 2>&1; then
     unify-pi-install || echo "WARN: unify-pi-install failed — duplicate pi installs may remain"
 fi

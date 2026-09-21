@@ -95,13 +95,16 @@ COPY unify-pi-install.sh /usr/local/bin/unify-pi-install
 RUN chmod +x /usr/local/bin/unify-pi-install
 
 # sshd gives non-interactive commands a minimal env (no Docker ENV PATH), so
-# expose the npm-global bins directly + via profile for login shells.
+# expose the npm-global bins directly + via profile for login shells, and put the
+# subagent package override in /etc/environment as well: pam_env reads that for
+# every ssh session, while a profile.d file only reaches login shells.
 # The symlinks dangle until the first boot installs pi/pi-web — nothing executes
 # them before the entrypoint does, and they keep the names on PATH for
 # `docker exec`.
 RUN ln -sf /root/.npm-global/bin/pi /usr/local/bin/pi \
   && ln -sf /root/.npm-global/bin/pi-web /usr/local/bin/pi-web \
-  && printf 'export PATH="/root/.npm-global/bin:/root/.local/bin:$PATH"\n' > /etc/profile.d/npm-global.sh
+  && printf 'export PATH="/root/.npm-global/bin:/root/.local/bin:$PATH"\nexport PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT=/root/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent\n' > /etc/profile.d/npm-global.sh \
+  && printf 'PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT=/root/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent\n' >> /etc/environment
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh

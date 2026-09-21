@@ -73,6 +73,7 @@ jobs:
             echo "[4] subagent host-package override"
             echo "  PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT=${PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT:-<UNSET>}"
             test "$PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT" = "/root/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent" || bad "host-package override missing"
+            grep -q PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT /etc/environment || bad "/etc/environment lacks the override (ssh sessions would miss it)"
             echo "[5] launchers"
             ls -l /usr/local/bin/pi /usr/local/bin/pi-web || bad "pi/pi-web symlinks missing"
             echo "[6] CJK pdf render"
