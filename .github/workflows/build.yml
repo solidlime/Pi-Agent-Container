@@ -53,16 +53,24 @@ jobs:
         run: |
           docker run --rm --entrypoint sh "$IMAGE:latest" -c '
             set -e
-            command -v git chezmoi rg zsh tmux vim fzf python3 make g++ sshd pandoc xelatex unify-pi-install
+            # dash's `command -v` only checks the FIRST name when given several
+            # (rc=0, one line printed) — so loop, and print each result.
+            echo "[1] tools"
+            for t in git chezmoi rg zsh tmux vim fzf python3 make g++ sshd pandoc xelatex unify-pi-install; do
+              printf "  %-16s %s\n" "$t" "$(command -v "$t" || echo MISSING)"
+              command -v "$t" >/dev/null
+            done
+            echo "[2] CJK fonts"
             test -e /usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc
-            sh -n /usr/local/bin/docker-entrypoint.sh
-            sh -n /usr/local/bin/update
-            sh -n /usr/local/bin/unify-pi-install
+            echo "[3] scripts parse"
+            for f in docker-entrypoint.sh update unify-pi-install; do sh -n "/usr/local/bin/$f"; done
             test -x /usr/local/bin/unify-pi-install
-            # subagents refuse to spawn without this (pi-web's entry point is not
-            # inside a pi-coding-agent package), so the ENV must survive the build
+            echo "[4] subagent host-package override"
+            echo "  PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT=${PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT:-<UNSET>}"
             test "$PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT" = "/root/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent"
+            echo "[5] pi/pi-web launchers"
             ls -l /usr/local/bin/pi /usr/local/bin/pi-web
+            echo "[6] CJK pdf render"
             printf "| a | b |\n|---|---|\n| 1 | 2 |\n\n日本語のグリフ確認\n" > /tmp/smoke.md
             pandoc /tmp/smoke.md -o /tmp/smoke.pdf --pdf-engine=xelatex \
               -V mainfont="Noto Serif CJK JP" -V monofont="Noto Sans Mono CJK JP" 2>/tmp/smoke.log
