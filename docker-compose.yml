@@ -14,7 +14,7 @@ services:
       # unset it *and* mount the host's gh CLI config (volumes below): the
       # entrypoint then uses whatever `gh auth login` stored.
       GH_TOKEN: ${GH_TOKEN:-}
-      PI_WEB_ALLOWED_HOSTS: "*"
+      PI_WEB_ALLOWED_HOSTS: nas
       SHELL: /usr/bin/zsh
       TZ: Asia/Tokyo
       # PI_WEB_PASSWORD: ${PI_WEB_PASSWORD:-}
