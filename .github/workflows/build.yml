@@ -36,6 +36,13 @@ jobs:
       # Cheap smoke test: the OS-level pieces must survive the build. The
       # npm globals are installed on first boot, so they are not checked here
       # (that path is verified by hand with a throwaway volume — see README).
+      #
+      # The pandoc render at the end is not decoration: `command -v` would pass
+      # on an image whose LaTeX dependency closure lost a package, and pandoc
+      # exits 0 even when xelatex drops every CJK glyph (it only warns), so the
+      # exit code alone cannot catch either. The table pulls booktabs/longtable
+      # (texlive-latex-recommended, a Depends of texlive-xetex) — that is the
+      # part a slimmer apt line would silently break.
       - name: smoke test
         run: |
           docker run --rm --entrypoint sh "$IMAGE:latest" -c '
@@ -45,6 +52,13 @@ jobs:
             sh -n /usr/local/bin/docker-entrypoint.sh
             sh -n /usr/local/bin/update
             ls -l /usr/local/bin/pi /usr/local/bin/pi-web
+            printf "| a | b |\n|---|---|\n| 1 | 2 |\n\n日本語のグリフ確認\n" > /tmp/smoke.md
+            pandoc /tmp/smoke.md -o /tmp/smoke.pdf --pdf-engine=xelatex \
+              -V mainfont="Noto Serif CJK JP" -V monofont="Noto Sans Mono CJK JP" 2>/tmp/smoke.log
+            test -s /tmp/smoke.pdf
+            if grep -q "Missing character" /tmp/smoke.log; then
+              echo "FAIL: pandoc rendered but dropped glyphs"; cat /tmp/smoke.log; exit 1
+            fi
             echo "smoke test OK"'
 
       # Pushed only after the smoke test passes.
