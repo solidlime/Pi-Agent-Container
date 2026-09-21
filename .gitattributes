@@ -1,0 +1,6 @@
+# Shell scripts and the Dockerfile must stay LF in the working copy too —
+# a Windows checkout with autocrlf=true turns them CRLF and the container fails
+# with "exec format error" / broken heredocs.
+* text=auto eol=lf
+*.sh text eol=lf
+Dockerfile text eol=lf
