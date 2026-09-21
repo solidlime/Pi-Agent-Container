@@ -40,7 +40,8 @@ jobs:
         run: |
           docker run --rm --entrypoint sh "$IMAGE:latest" -c '
             set -e
-            command -v git chezmoi rg zsh tmux vim fzf python3 make g++ sshd
+            command -v git chezmoi rg zsh tmux vim fzf python3 make g++ sshd pandoc xelatex
+            test -e /usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc
             sh -n /usr/local/bin/docker-entrypoint.sh
             sh -n /usr/local/bin/update
             ls -l /usr/local/bin/pi /usr/local/bin/pi-web

@@ -54,6 +54,16 @@ RUN apt-get update \
      xdg-utils \
   && rm -rf /var/lib/apt/lists/*
 
+# PDF export stack. pi's PDF export (pi-markdown-preview) shells out to
+# pandoc -> xelatex as child processes, so both must be in the image or the
+# export fails outright. fonts-noto-cjk is required *silently*: xelatex's
+# default font (Latin Modern) has no CJK glyphs, so a Japanese markdown exports
+# with every glyph dropped and no warning. The same font set also covers
+# headless Chromium's Japanese rendering.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends pandoc texlive-xetex texlive-fonts-recommended lmodern fonts-noto-cjk \
+  && rm -rf /var/lib/apt/lists/*
+
 # update script: one-shot upgrade of pi/pi-web + dotfiles, all persisted in /root
 COPY update.sh /usr/local/bin/update
 RUN chmod +x /usr/local/bin/update

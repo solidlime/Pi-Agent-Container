@@ -4,7 +4,7 @@
 from a [chezmoi](https://chezmoi.io) dotfiles repo, with everything persisted on
 the host.
 
-- **Image**: `ghcr.io/solidlime/pi-agent-container:latest` (linux/amd64, ~1.1 GB)
+- **Image**: `ghcr.io/solidlime/pi-agent-container:latest` (linux/amd64, ~1.4 GB — ~0.32 GB of that is the PDF stack below)
 - **Built by**: GitHub Actions on every push to `main` (`.github/workflows/build.yml`)
 
 ## Run
@@ -59,6 +59,7 @@ the workspace (`/root/workspace`) all survive container recreation.
 | chezmoi | the pi extension tree (`/root/.pi/agent/npm`, ~280 packages) |
 | python3/make/g++ | agent-browser's Chromium download |
 | Chromium runtime libraries | everything the dotfiles' `run_*` scripts do |
+| pandoc + xelatex, Noto CJK fonts | pi's PDF export (pi-markdown-preview) |
 
 The two npm globals are ~1.4 GB and the dotfiles already install them
 (`run_onchange_install-npm-globals.sh`), so baking them downloaded everything
@@ -66,8 +67,10 @@ twice and kept a second copy in an image layer. The entrypoint installs them
 **only if the dotfiles sync did not** — a stock container with no `GH_TOKEN`
 still works.
 
-The build toolchain and the Chromium libraries stay in the image on purpose:
-they are needed at **runtime**, not at build time.
+The build toolchain, the Chromium libraries and the PDF stack (pandoc/xelatex +
+Noto CJK) stay in the image on purpose: they are needed at **runtime**, not at
+build time. The PDF stack adds ~320 MB (pandoc 164.5 MB, fonts-noto-cjk 88.9 MB,
+lmodern 32.5 MB, texlive-xetex 15.7 MB, texlive-fonts-recommended 14.7 MB).
 
 ## Update
 
@@ -102,6 +105,16 @@ docker restart pi          # pick up new binaries
   `/root/.local/share/chezmoi/.git/config` — on the host mount, readable by
   anything that can read that directory. Keep the mount's permissions tight, or
   switch to a deploy key / read-only fine-grained token.
+- **No CJK font → Japanese disappears *silently*.** pandoc's default xelatex
+  font (Latin Modern) has no CJK glyphs, so a Japanese markdown exports with
+  every glyph dropped and no warning. pi hardcodes its pandoc `-V` flags and
+  offers no font hook; the `$HOME/.local/bin/pandoc` wrapper (chezmoi) sits
+  first on PATH and injects the Noto CJK fonts plus `\XeTeXlinebreaklocale
+  "ja"` (via `~/.local/share/pandoc-cjk/jp-header.tex`).
+- **`~/.pi/agent/npm/node_modules/@earendil-works/pi-coding-agent` can dangle
+  after a pi-web update.** pi-web bundles a nested pi-coding-agent and npm hoists
+  it; when the link breaks, point it back at
+  `/root/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent`.
 
 ## CI
 

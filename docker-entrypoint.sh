@@ -3,6 +3,7 @@
 #
 # Ordering matters and is enforced by doing all of it in this one shell:
 #   1. dotfiles sync (chezmoi)  — installs pi, pi-web and the extension list
+#   1b. /usr/bin/chromium link  — after chezmoi, which provides its target
 #   2. npm globals fallback     — only if step 1 did not produce them
 #   3. extension tree sync      — needs pi from step 1 or 2
 #   4. exec pi-web
@@ -48,6 +49,17 @@ if [ -n "$GH_TOKEN" ] && ! [ -d "$HOME/.local/share/chezmoi/.git" ]; then
     chezmoi init --apply "https://x-access-token:${GH_TOKEN}@github.com/solidlime/dotfiles.git" \
         || echo "WARN: chezmoi sync failed — continuing with stock config"
 fi
+
+# 1b. /usr/bin/chromium: agent-browser looks for the browser at this exact path
+#     on Linux, but /usr is outside the mounted /root volume, so a container
+#     recreate wipes it. chezmoi provides the real wrapper at
+#     $HOME/.local/bin/chromium — it resolves agent-browser's version-pinned
+#     Chrome at call time, so a hardcoded path would dangle after every update.
+#     Re-point it on every boot. Idempotent, and if the dotfiles sync failed the
+#     symlink just dangles (ln -sf does not require the target to exist) rather
+#     than breaking the boot.
+ln -sf "$HOME/.local/bin/chromium" /usr/bin/chromium \
+    || echo "WARN: could not create /usr/bin/chromium symlink"
 
 # 2. npm globals fallback. The image does not bake pi/pi-web (the dotfiles do).
 #    This keeps a stock container working when the sync is skipped or fails, and
