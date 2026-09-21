@@ -42,10 +42,18 @@ ENV PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT=/root/.npm-global/lib/node_modules
 # that output plus ~150 update-alternatives warnings floods `docker logs`.
 # run_once also never re-runs in an existing volume — a recreated container
 # would silently lose them.
+#
+# The chezmoi install is deliberately NOT `curl ... | sh`: the pipeline's exit
+# status is sh's, so a failed download silently produced an image without
+# chezmoi (the smoke test only noticed once it stopped checking a single tool
+# name). Download, run, then assert the binary is there.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends bash ca-certificates git ripgrep curl unzip openssh-server zsh tmux vim fzf \
   && rm -rf /var/lib/apt/lists/* \
-  && curl -fsLS get.chezmoi.io | sh -s -- -b /usr/local/bin \
+  && curl -fsSL -o /tmp/chezmoi-install.sh https://get.chezmoi.io \
+  && sh /tmp/chezmoi-install.sh -b /usr/local/bin \
+  && rm -f /tmp/chezmoi-install.sh \
+  && test -x /usr/local/bin/chezmoi \
   && mkdir -p /run/sshd /root/.ssh \
   && echo 'PermitRootLogin prohibit-password' >> /etc/ssh/sshd_config \
   && echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config
