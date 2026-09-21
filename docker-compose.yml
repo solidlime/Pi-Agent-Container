@@ -24,11 +24,6 @@ services:
       # (.pi), the chezmoi source (.local/share/chezmoi) and the workspace.
       # One host directory → a recreated container keeps all of it.
       - /volume1/docker/pi/root:/root
-      # Reuse the host's `gh auth login` instead of a token in .env (needs the gh
-      # CLI on the host; mounted read-only, only read when GH_TOKEN is empty).
-      # A host without gh just gets an empty directory here — the entrypoint
-      # falls back to a stock boot, same as an unset GH_TOKEN.
-      - ~/.config/gh:/root/.config/gh:ro
     # Uncomment when the container has to reach the host by name:
     # extra_hosts:
     #   - "host.docker.internal:host-gateway"
